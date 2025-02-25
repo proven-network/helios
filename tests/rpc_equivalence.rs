@@ -28,7 +28,7 @@ async fn setup() -> (
     let mut helios_client = EthereumClientBuilder::new()
         .network(Network::Mainnet)
         .execution_rpc(&execution_rpc)
-        .consensus_rpc(&consensus_rpc)
+        .consensus_rpc(consensus_rpc)
         .load_external_fallback()
         .strict_checkpoint_age()
         .rpc_port(port)

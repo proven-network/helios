@@ -710,9 +710,8 @@ mod tests {
     #[tokio::test]
     async fn test_verify_update() {
         let client = get_client(false, false).await;
-        let period = calc_sync_period::<MainnetConsensusSpec>(
-            client.store.finalized_header.beacon().slot.into(),
-        );
+        let period =
+            calc_sync_period::<MainnetConsensusSpec>(client.store.finalized_header.beacon().slot);
         let updates = client
             .rpc
             .get_updates(period, MAX_REQUEST_LIGHT_CLIENT_UPDATES)
@@ -726,9 +725,8 @@ mod tests {
     #[tokio::test]
     async fn test_verify_update_invalid_committee() {
         let client = get_client(false, false).await;
-        let period = calc_sync_period::<MainnetConsensusSpec>(
-            client.store.finalized_header.beacon().slot.into(),
-        );
+        let period =
+            calc_sync_period::<MainnetConsensusSpec>(client.store.finalized_header.beacon().slot);
         let updates = client
             .rpc
             .get_updates(period, MAX_REQUEST_LIGHT_CLIENT_UPDATES)
@@ -748,9 +746,8 @@ mod tests {
     #[tokio::test]
     async fn test_verify_update_invalid_finality() {
         let mut client = get_client(false, false).await;
-        let period = calc_sync_period::<MainnetConsensusSpec>(
-            client.store.finalized_header.beacon().slot.into(),
-        );
+        let period =
+            calc_sync_period::<MainnetConsensusSpec>(client.store.finalized_header.beacon().slot);
         let updates = client
             .rpc
             .get_updates(period, MAX_REQUEST_LIGHT_CLIENT_UPDATES)
@@ -775,9 +772,8 @@ mod tests {
     #[tokio::test]
     async fn test_verify_update_invalid_sig() {
         let client = get_client(false, false).await;
-        let period = calc_sync_period::<MainnetConsensusSpec>(
-            client.store.finalized_header.beacon().slot.into(),
-        );
+        let period =
+            calc_sync_period::<MainnetConsensusSpec>(client.store.finalized_header.beacon().slot);
         let updates = client
             .rpc
             .get_updates(period, MAX_REQUEST_LIGHT_CLIENT_UPDATES)
@@ -809,9 +805,8 @@ mod tests {
 
         let mut update = client.rpc.get_finality_update().await.unwrap();
         // Get finalized header from an older update
-        let period = calc_sync_period::<MainnetConsensusSpec>(
-            client.store.finalized_header.beacon().slot.into(),
-        );
+        let period =
+            calc_sync_period::<MainnetConsensusSpec>(client.store.finalized_header.beacon().slot);
         let updates: Vec<Update<MainnetConsensusSpec>> = client
             .rpc
             .get_updates(period, MAX_REQUEST_LIGHT_CLIENT_UPDATES)

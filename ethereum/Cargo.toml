@@ -12,7 +12,7 @@ revm.workspace = true
 # config
 figment = { version = "0.10.7", features = ["toml", "env"] }
 serde_yaml = "0.9.14"
-strum = { version = "0.26.2", features = ["derive"] }
+strum = { version = "0.27.1", features = ["derive"] }
 url = {version = "2.5.0", features = ["serde"] }
 
 # async/futures
@@ -41,7 +41,7 @@ helios-consensus-core = { path = "consensus-core" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4.37"
-getrandom = { version = "0.2.1", features = ["js"] }
+getrandom = { version = "0.2.15", features = ["js"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 openssl.workspace = true

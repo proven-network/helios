@@ -45,7 +45,7 @@ pub fn load_checkpoint(c: &mut Criterion) {
         let db = FileDB::new(&config).unwrap();
         let written_checkpoint =
             b256!("c7fc7b2f4b548bfc9305fa80bc1865ddc6eea4557f0a80507af5dc34db7bd9ce");
-        db.save_checkpoint(written_checkpoint.clone()).unwrap();
+        db.save_checkpoint(written_checkpoint).unwrap();
 
         // Then read from the db
         b.iter(|| {
