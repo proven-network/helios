@@ -244,7 +244,10 @@ impl CheckpointFallback {
     /// use helios_ethereum::config::checkpoints::CheckpointFallback;
     ///
     /// let url = CheckpointFallback::construct_url("https://sync-mainnet.beaconcha.in");
-    /// assert_eq!("https://sync-mainnet.beaconcha.in/checkpointz/v1/beacon/slots", url);
+    /// assert_eq!(
+    ///     "https://sync-mainnet.beaconcha.in/checkpointz/v1/beacon/slots",
+    ///     url
+    /// );
     /// ```
     pub fn construct_url(endpoint: &str) -> String {
         format!("{endpoint}/checkpointz/v1/beacon/slots")
