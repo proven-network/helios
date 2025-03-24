@@ -28,6 +28,11 @@ use helios_ethereum::database::FileDB;
 use helios_ethereum::{EthereumClient, EthereumClientBuilder};
 use helios_opstack::{config::Config as OpStackConfig, OpStackClient, OpStackClientBuilder};
 
+use helios_linea::{
+    builder::LineaClientBuilder, config::CliConfig as LineaCliConfig,
+    config::Config as LineaConfig, types::LineaClient,
+};
+
 #[tokio::main]
 async fn main() -> Result<()> {
     enable_tracer();
@@ -41,6 +46,11 @@ async fn main() -> Result<()> {
         }
         Command::OpStack(opstack) => {
             let mut client = opstack.make_client();
+            start_client(&mut client).await;
+            register_shutdown_handler(client);
+        }
+        Command::Linea(linea) => {
+            let mut client = linea.make_client();
             start_client(&mut client).await;
             register_shutdown_handler(client);
         }
@@ -102,7 +112,7 @@ fn register_shutdown_handler<N: NetworkSpec, C: Consensus<N::BlockResponse>>(cli
 }
 
 #[derive(Parser)]
-#[clap(version, about)]
+#[command(version, about)]
 /// Helios is a fast, secure, and portable multichain light client
 struct Cli {
     #[command(subcommand)]
@@ -111,35 +121,37 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    #[clap(name = "ethereum")]
+    #[command(name = "ethereum")]
     Ethereum(EthereumArgs),
-    #[clap(name = "opstack")]
+    #[command(name = "opstack")]
     OpStack(OpStackArgs),
+    #[command(name = "linea")]
+    Linea(LineaArgs),
 }
 
 #[derive(Args)]
 struct EthereumArgs {
-    #[clap(short, long, default_value = "mainnet")]
+    #[arg(short, long, default_value = "mainnet")]
     network: String,
-    #[clap(short = 'b', long, env)]
+    #[arg(short = 'b', long, env)]
     rpc_bind_ip: Option<IpAddr>,
-    #[clap(short = 'p', long, env)]
+    #[arg(short = 'p', long, env)]
     rpc_port: Option<u16>,
-    #[clap(short = 'w', long, env)]
+    #[arg(short = 'w', long, env)]
     checkpoint: Option<B256>,
-    #[clap(short, long, env, value_parser = parse_url)]
+    #[arg(short, long, env, value_parser = parse_url)]
     execution_rpc: Option<Url>,
-    #[clap(long, env, value_parser = parse_url)]
+    #[arg(long, env, value_parser = parse_url)]
     execution_verifiable_api: Option<Url>,
-    #[clap(short, long, env, value_parser = parse_url)]
+    #[arg(short, long, env, value_parser = parse_url)]
     consensus_rpc: Option<Url>,
-    #[clap(short, long, env)]
+    #[arg(short, long, env)]
     data_dir: Option<String>,
-    #[clap(short = 'f', long, env)]
+    #[arg(short = 'f', long, env)]
     fallback: Option<String>,
-    #[clap(short = 'l', long, env)]
+    #[arg(short = 'l', long, env)]
     load_external_fallback: bool,
-    #[clap(short = 's', long, env)]
+    #[arg(short = 's', long, env)]
     strict_checkpoint_age: bool,
 }
 
@@ -182,26 +194,26 @@ impl EthereumArgs {
 
 #[derive(Args, Debug)]
 struct OpStackArgs {
-    #[clap(short, long)]
+    #[arg(short, long)]
     network: String,
-    #[clap(short = 'b', long, env, default_value = "127.0.0.1")]
+    #[arg(short = 'b', long, env, default_value = "127.0.0.1")]
     rpc_bind_ip: Option<IpAddr>,
-    #[clap(short = 'p', long, env, default_value = "8545")]
+    #[arg(short = 'p', long, env, default_value = "8545")]
     rpc_port: Option<u16>,
-    #[clap(short, long, env, value_parser = parse_url)]
+    #[arg(short, long, env, value_parser = parse_url)]
     execution_rpc: Option<Url>,
-    #[clap(long, env, value_parser = parse_url)]
+    #[arg(long, env, value_parser = parse_url)]
     execution_verifiable_api: Option<Url>,
-    #[clap(short, long, env, value_parser = parse_url)]
+    #[arg(short, long, env, value_parser = parse_url)]
     consensus_rpc: Option<Url>,
-    #[clap(
+    #[arg(
         short = 'w',
         long = "ethereum-checkpoint",
         env = "ETHEREUM_CHECKPOINT",
         help = "Set custom weak subjectivity checkpoint for chosen Ethereum network. Helios uses this to sync and trustlessly fetch the correct unsafe signer address used by <NETWORK>"
     )]
     checkpoint: Option<B256>,
-    #[clap(
+    #[arg(
         short = 'l',
         long = "ethereum-load-external-fallback",
         env = "ETHEREUM_LOAD_EXTERNAL_FALLBACK",
@@ -262,6 +274,42 @@ impl OpStackArgs {
         }
 
         Serialized::from(user_dict, &self.network)
+    }
+}
+
+#[derive(Args, Debug)]
+struct LineaArgs {
+    #[arg(short, long, default_value = "linea")]
+    network: String,
+    #[arg(short = 'b', long, env)]
+    rpc_bind_ip: Option<IpAddr>,
+    #[arg(short = 'p', long, env)]
+    rpc_port: Option<u16>,
+    #[arg(short, long, env, value_parser = parse_url)]
+    execution_rpc: Option<Url>,
+}
+
+impl LineaArgs {
+    fn make_client(&self) -> LineaClient {
+        let config_path = home_dir().unwrap().join(".helios/helios.toml");
+        let cli_config = self.as_cli_config();
+        let config = LineaConfig::from_file(&config_path, &self.network, &cli_config);
+
+        match LineaClientBuilder::new().config(config).build() {
+            Ok(client) => client,
+            Err(err) => {
+                error!(target: "helios::runner", error = %err);
+                exit(1);
+            }
+        }
+    }
+
+    fn as_cli_config(&self) -> LineaCliConfig {
+        LineaCliConfig {
+            execution_rpc: self.execution_rpc.clone(),
+            rpc_bind_ip: self.rpc_bind_ip,
+            rpc_port: self.rpc_port,
+        }
     }
 }
 

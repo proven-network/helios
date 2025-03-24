@@ -131,7 +131,7 @@ impl<N: NetworkSpec> Evm<N> {
             }
         };
 
-        tx_res.map_err(|_| EvmError::Generic("evm error".to_string()))
+        tx_res.map_err(|err| EvmError::Generic(format!("generic: {}", err)))
     }
 
     async fn get_env(&self, tx: &N::TransactionRequest, tag: BlockTag, validate_tx: bool) -> Env {
@@ -211,7 +211,17 @@ impl<N: NetworkSpec> EvmState<N> {
                         .get_account(address, Some(&[slot_bytes]), self.block, true)
                         .await?;
 
-                    self.accounts.insert(address, account);
+                    if let Some(stored_account) = self.accounts.get_mut(&address) {
+                        if stored_account.code.is_none() {
+                            stored_account.code = account.code;
+                        }
+
+                        for storage_proof in account.storage_proof {
+                            stored_account.storage_proof.push(storage_proof);
+                        }
+                    } else {
+                        self.accounts.insert(address, account);
+                    }
                 }
                 StateAccess::BlockHash(number) => {
                     let tag = BlockTag::Number(number);
