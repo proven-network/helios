@@ -616,16 +616,16 @@ fn payload_to_block<S: ConsensusSpec>(value: ExecutionPayload<S>) -> Block<Trans
             let tx_bytes = tx_bytes.inner.to_vec();
             let mut tx_bytes_slice = tx_bytes.as_slice();
             let tx_envelope = TxEnvelope::decode(&mut tx_bytes_slice).unwrap();
-
             let base_fee = Some(value.base_fee_per_gas().to());
+            let effective_gas_price = tx_envelope.effective_gas_price(base_fee);
+            let recovered = tx_envelope.try_into_recovered().unwrap();
 
             Transaction {
                 block_hash: Some(*value.block_hash()),
                 block_number: Some(*value.block_number()),
                 transaction_index: Some(i as u64),
-                from: tx_envelope.recover_signer().unwrap(),
-                effective_gas_price: Some(tx_envelope.effective_gas_price(base_fee)),
-                inner: tx_envelope,
+                effective_gas_price: Some(effective_gas_price),
+                inner: recovered,
             }
         })
         .collect::<Vec<_>>();
@@ -831,9 +831,8 @@ mod tests {
 
         let mut update = client.rpc.get_finality_update().await.unwrap();
         // Get finalized header from an older update
-        let period = calc_sync_period::<MainnetConsensusSpec>(
-            client.store.finalized_header.beacon().slot.into(),
-        );
+        let period =
+            calc_sync_period::<MainnetConsensusSpec>(client.store.finalized_header.beacon().slot);
         *client.rpc.fetched_updates.lock().unwrap() = false;
         let updates: Vec<Update<MainnetConsensusSpec>> = client
             .rpc
