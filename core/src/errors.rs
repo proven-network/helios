@@ -1,14 +1,14 @@
+use alloy::eips::BlockId;
 use eyre::Report;
+use helios_common::types::EvmError;
 use thiserror::Error;
 
-use helios_common::types::BlockTag;
-
-use crate::execution::errors::{EvmError, ExecutionError};
+use crate::execution::errors::ExecutionError;
 
 #[derive(Debug, Error)]
 pub enum ClientError {
     #[error("block not found: {0}")]
-    BlockNotFound(BlockTag),
+    BlockNotFound(BlockId),
     #[error("out of sync: {0} seconds behind")]
     OutOfSync(u64),
     #[error("execution error: {0}")]

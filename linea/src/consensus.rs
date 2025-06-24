@@ -106,7 +106,7 @@ struct Inner {
 impl Inner {
     pub async fn advance(&mut self) -> Result<()> {
         let rpc_url = Url::parse(self.server_url.as_str())?;
-        let provider = ProviderBuilder::new().on_http(rpc_url);
+        let provider = ProviderBuilder::new().connect_http(rpc_url);
 
         let block = provider
             .get_block_by_number(BlockNumberOrTag::Latest)
@@ -135,7 +135,7 @@ impl Inner {
                 self.latest_block = Some(number);
                 _ = self.block_send.send(block).await;
 
-                tracing::info!(
+                tracing::debug!(
                     "unsafe head updated: block={} age={}s",
                     number,
                     age.as_secs()
@@ -147,7 +147,7 @@ impl Inner {
     }
 }
 
-fn verify_block(curr_signer: Address, block: &Block<Transaction>) -> Result<()> {
+pub fn verify_block(curr_signer: Address, block: &Block<Transaction>) -> Result<()> {
     let extra_data = block.header.inner.extra_data.clone();
 
     let length = extra_data.len();

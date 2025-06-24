@@ -12,13 +12,14 @@ use figment::{
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use helios_common::fork_schedule::ForkSchedule;
 use helios_ethereum::config::networks::Network as EthNetwork;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Config {
     pub consensus_rpc: Url,
-    pub execution_rpc: Option<String>,
-    pub execution_verifiable_api: Option<String>,
+    pub execution_rpc: Option<Url>,
+    pub verifiable_api: Option<Url>,
     pub rpc_socket: Option<SocketAddr>,
     pub chain: ChainConfig,
     pub load_external_fallback: Option<bool>,
@@ -32,6 +33,7 @@ pub struct ChainConfig {
     pub unsafe_signer: Address,
     pub system_config_contract: Address,
     pub eth_network: EthNetwork,
+    pub forks: ForkSchedule,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -91,6 +93,7 @@ impl From<Network> for NetworkConfig {
                     unsafe_signer: address!("AAAA45d9549EDA09E70937013520214382Ffc4A2"),
                     system_config_contract: address!("229047fed2591dbec1eF1118d64F7aF3dB9EB290"),
                     eth_network: EthNetwork::Mainnet,
+                    forks: SuperchainForkSchedule::mainnet(),
                 },
                 verify_unsafe_signer: false,
             },
@@ -101,6 +104,7 @@ impl From<Network> for NetworkConfig {
                     unsafe_signer: address!("Af6E19BE0F9cE7f8afd49a1824851023A8249e8a"),
                     system_config_contract: address!("73a79Fab69143498Ed3712e519A88a918e1f4072"),
                     eth_network: EthNetwork::Mainnet,
+                    forks: SuperchainForkSchedule::mainnet(),
                 },
                 verify_unsafe_signer: false,
             },
@@ -115,6 +119,7 @@ impl From<Network> for NetworkConfig {
                     unsafe_signer: address!("2270d6eC8E760daA317DD978cFB98C8f144B1f3A"),
                     system_config_contract: address!("6ab0777fD0e609CE58F939a7F70Fe41F5Aa6300A"),
                     eth_network: EthNetwork::Mainnet,
+                    forks: SuperchainForkSchedule::mainnet(),
                 },
                 verify_unsafe_signer: false,
             },
@@ -125,6 +130,7 @@ impl From<Network> for NetworkConfig {
                     unsafe_signer: address!("3Dc8Dfd0709C835cAd15a6A27e089FF4cF4C9228"),
                     system_config_contract: address!("A3cAB0126d5F504B071b81a3e8A2BBBF17930d86"),
                     eth_network: EthNetwork::Mainnet,
+                    forks: SuperchainForkSchedule::mainnet(),
                 },
                 verify_unsafe_signer: false,
             },
@@ -135,6 +141,7 @@ impl From<Network> for NetworkConfig {
                     unsafe_signer: address!("0x833C6f278474A78658af91aE8edC926FE33a230e"),
                     system_config_contract: address!("c407398d063f942feBbcC6F80a156b47F3f1BDA6"),
                     eth_network: EthNetwork::Mainnet,
+                    forks: SuperchainForkSchedule::mainnet(),
                 },
                 verify_unsafe_signer: false,
             },
@@ -183,6 +190,25 @@ impl Config {
                 }
                 exit(1);
             }
+        }
+    }
+}
+
+pub struct SuperchainForkSchedule;
+
+impl SuperchainForkSchedule {
+    pub fn mainnet() -> ForkSchedule {
+        ForkSchedule {
+            bedrock_timestamp: 0,
+            regolith_timestamp: 0,
+            canyon_timestamp: 1704992401,
+            ecotone_timestamp: 1710374401,
+            fjord_timestamp: 1720627201,
+            granite_timestamp: 1726070401,
+            holocene_timestamp: 1736445601,
+            isthmus_timestamp: 1744905600,
+
+            ..Default::default()
         }
     }
 }

@@ -3,25 +3,24 @@ use alloy::{
     signers::Signature,
 };
 use eyre::Result;
+use helios_core::client::HeliosClient;
 use serde::{Deserialize, Serialize};
 use spec::OpStack;
 use ssz::Decode;
 
-use helios_core::client::Client;
-
-use consensus::ConsensusClient;
 use types::ExecutionPayload;
 
 mod builder;
 pub mod config;
 pub mod consensus;
+pub(crate) mod evm;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod server;
 pub mod spec;
 pub mod types;
 
 pub use builder::OpStackClientBuilder;
-pub type OpStackClient = Client<OpStack, ConsensusClient>;
+pub type OpStackClient = HeliosClient<OpStack>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SequencerCommitment {

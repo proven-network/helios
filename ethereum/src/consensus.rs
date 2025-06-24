@@ -3,6 +3,7 @@ use std::process;
 use std::sync::Arc;
 
 use alloy::consensus::proofs::{calculate_transaction_root, calculate_withdrawals_root};
+use alloy::consensus::transaction::SignerRecoverable;
 use alloy::consensus::{Header as ConsensusHeader, Transaction as TxTrait, TxEnvelope};
 use alloy::eips::eip4895::{Withdrawal, Withdrawals};
 use alloy::primitives::{b256, fixed_bytes, Bloom, BloomInput, B256, U256};
@@ -14,6 +15,7 @@ use eyre::Result;
 use futures::future::join_all;
 use tracing::{debug, error, info, warn};
 use tree_hash::TreeHash;
+use url::Url;
 
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::Receiver;
@@ -86,7 +88,7 @@ impl<S: ConsensusSpec, R: ConsensusRpc<S>, DB: Database> Consensus<Block>
 }
 
 impl<S: ConsensusSpec, R: ConsensusRpc<S>, DB: Database> ConsensusClient<S, R, DB> {
-    pub fn new(rpc: &str, config: Arc<Config>) -> Result<ConsensusClient<S, R, DB>> {
+    pub fn new(rpc: &Url, config: Arc<Config>) -> Result<ConsensusClient<S, R, DB>> {
         let (block_send, block_recv) = channel(256);
         let (finalized_block_send, finalized_block_recv) = watch::channel(None);
         let (checkpoint_send, checkpoint_recv) = watch::channel(None);
@@ -236,7 +238,7 @@ fn save_new_checkpoints<DB: Database>(
 
 async fn sync_fallback<S: ConsensusSpec, R: ConsensusRpc<S>>(
     inner: &mut Inner<S, R>,
-    fallback: &str,
+    fallback: &Url,
 ) -> Result<()> {
     let checkpoint = CheckpointFallback::fetch_checkpoint_from_api(fallback).await?;
     inner.sync(checkpoint).await
@@ -367,7 +369,7 @@ impl<S: ConsensusSpec, R: ConsensusRpc<S>> Inner<S, R> {
         self.verify_finality_update(&finality_update)?;
         self.apply_finality_update(&finality_update);
 
-        info!(
+        debug!(
             target: "helios::consensus",
             "consensus client in sync with checkpoint: 0x{}",
             hex::encode(checkpoint)
@@ -423,7 +425,7 @@ impl<S: ConsensusSpec, R: ConsensusRpc<S>> Inner<S, R> {
                 let res = self.verify_update(update);
 
                 if res.is_ok() {
-                    info!(target: "helios::consensus", "updating sync committee");
+                    debug!(target: "helios::consensus", "updating sync committee");
                     self.apply_update(update);
                 }
             }
@@ -438,9 +440,11 @@ impl<S: ConsensusSpec, R: ConsensusRpc<S>> Inner<S, R> {
         let finalized_slot = self.store.finalized_header.beacon().slot;
         let finalized_payload = self.get_execution_payload(&Some(finalized_slot)).await?;
 
-        self.block_send.send(payload_to_block(payload)).await?;
-        self.finalized_block_send
-            .send(Some(payload_to_block(finalized_payload)))?;
+        let block = payload_to_block(payload);
+        let finalized_block = payload_to_block(finalized_payload);
+
+        self.block_send.send(block).await?;
+        self.finalized_block_send.send(Some(finalized_block))?;
         self.checkpoint_send.send(self.last_checkpoint)?;
 
         Ok(())
@@ -538,7 +542,7 @@ impl<S: ConsensusSpec, R: ConsensusRpc<S>> Inner<S, R> {
         let decimals = if participation == 100.0 { 1 } else { 2 };
         let age = self.age(self.store.finalized_header.beacon().slot);
 
-        info!(
+        debug!(
             target: "helios::consensus",
             "finalized slot             slot={}  confidence={:.decimals$}%  age={:02}:{:02}:{:02}:{:02}",
             self.store.finalized_header.beacon().slot,
@@ -557,7 +561,7 @@ impl<S: ConsensusSpec, R: ConsensusRpc<S>> Inner<S, R> {
         let decimals = if participation == 100.0 { 1 } else { 2 };
         let age = self.age(self.store.optimistic_header.beacon().slot);
 
-        info!(
+        debug!(
             target: "helios::consensus",
             "updated head               slot={}  confidence={:.decimals$}%  age={:02}:{:02}:{:02}:{:02}",
             self.store.optimistic_header.beacon().slot,
@@ -608,27 +612,61 @@ fn payload_to_block<S: ConsensusSpec>(value: ExecutionPayload<S>) -> Block<Trans
     let empty_uncle_hash =
         b256!("1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347");
 
+    let block_hash = *value.block_hash();
+    let block_number = *value.block_number();
+    let base_fee = Some(value.base_fee_per_gas().to());
+
+    // Helper function to process a single transaction
+    let process_tx = |i: usize,
+                      tx_bytes: &helios_consensus_core::types::Transaction,
+                      block_hash: B256,
+                      block_number: u64,
+                      base_fee: Option<u128>|
+     -> Transaction {
+        let tx_bytes = tx_bytes.inner.to_vec();
+        let mut tx_bytes_slice = tx_bytes.as_slice();
+        let tx_envelope = TxEnvelope::decode(&mut tx_bytes_slice).unwrap();
+        let effective_gas_price = tx_envelope.effective_gas_price(base_fee.map(|v| v as u64));
+        let recovered = tx_envelope.try_into_recovered().unwrap();
+
+        Transaction {
+            block_hash: Some(block_hash),
+            block_number: Some(block_number),
+            transaction_index: Some(i as u64),
+            effective_gas_price: Some(effective_gas_price),
+            inner: recovered,
+        }
+    };
+
+    // Process transactions - use parallel processing on native, sequential on WASM
+    #[cfg(not(target_arch = "wasm32"))]
+    let txs = {
+        use rayon::prelude::*;
+
+        // Create a custom thread pool with larger stack size for signature recovery
+        let pool = rayon::ThreadPoolBuilder::new()
+            .stack_size(4 * 1024 * 1024) // 4MB stack per thread
+            .build()
+            .unwrap();
+
+        pool.install(|| {
+            value
+                .transactions()
+                .par_iter()
+                .enumerate()
+                .map(|(i, tx_bytes)| process_tx(i, tx_bytes, block_hash, block_number, base_fee))
+                .collect::<Vec<_>>()
+        })
+    };
+
+    #[cfg(target_arch = "wasm32")]
     let txs = value
         .transactions()
         .iter()
         .enumerate()
-        .map(|(i, tx_bytes)| {
-            let tx_bytes = tx_bytes.inner.to_vec();
-            let mut tx_bytes_slice = tx_bytes.as_slice();
-            let tx_envelope = TxEnvelope::decode(&mut tx_bytes_slice).unwrap();
-            let base_fee = Some(value.base_fee_per_gas().to());
-            let effective_gas_price = tx_envelope.effective_gas_price(base_fee);
-            let recovered = tx_envelope.try_into_recovered().unwrap();
-
-            Transaction {
-                block_hash: Some(*value.block_hash()),
-                block_number: Some(*value.block_number()),
-                transaction_index: Some(i as u64),
-                effective_gas_price: Some(effective_gas_price),
-                inner: recovered,
-            }
-        })
+        .map(|(i, tx_bytes)| process_tx(i, tx_bytes, block_hash, block_number, base_fee))
         .collect::<Vec<_>>();
+
     let tx_envelopes = txs.iter().map(|tx| tx.inner.clone()).collect::<Vec<_>>();
     let txs_root = calculate_transaction_root(&tx_envelopes);
 
@@ -689,6 +727,8 @@ mod tests {
     use helios_consensus_core::types::bls::{PublicKey, Signature};
     use helios_consensus_core::types::Update;
 
+    use url::Url;
+
     use crate::{
         config::{networks, Config},
         consensus::calc_sync_period,
@@ -703,7 +743,7 @@ mod tests {
     ) -> Inner<MainnetConsensusSpec, MockRpc> {
         let base_config = networks::mainnet();
         let config = Config {
-            consensus_rpc: String::new(),
+            consensus_rpc: Url::parse("http://localhost:8545").unwrap(),
             chain: base_config.chain,
             forks: base_config.forks,
             strict_checkpoint_age,

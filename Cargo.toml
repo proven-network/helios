@@ -6,7 +6,7 @@ autobenches = false
 exclude = ["benches"]
 
 [workspace.package]
-version = "0.8.8"
+version = "0.9.0"
 
 [workspace]
 members = [
@@ -20,7 +20,7 @@ members = [
     "tests/test-utils",        # ToDo(@eshaan7): find a better way to include this
     "verifiable-api/client",
     "verifiable-api/server",
-    "verifiable-api/types", "linea",
+    "verifiable-api/types", "linea", "revm-utils",
 ]
 
 default-members = ["cli"]
@@ -40,7 +40,7 @@ sha2 = "0.9"
 bls12_381 = { version = "0.8.0", features = ["experimental"] }
 
 # execution
-alloy = { version = "0.14.0", features = [
+alloy = { version = "1.0.12", features = [
     "rpc-types",
     "consensus",
     "rlp",
@@ -53,7 +53,7 @@ alloy = { version = "0.14.0", features = [
     "signers",
 ] }
 alloy-trie = "0.8.1"
-op-alloy-rpc-types = "0.14.0"
+op-alloy-rpc-types = "0.18.0"
 revm = { version = "22.0.1", default-features = false, features = [
     "std",
     "serde",
@@ -68,7 +68,9 @@ futures = "0.3.23"
 tokio = { version = "1", features = ["rt", "sync", "macros"] }
 
 # io
-reqwest = { version = "0.12.4", features = ["json"] }
+reqwest = { version = "0.12.4", features = ["json", "gzip", "deflate", "zstd", "brotli", "hickory-dns"] }
+reqwest-middleware = { version = "0.4.2", features = ["json"] }
+reqwest-retry = "0.7.0"
 url = { version = "2.5.2", features = ["serde"] }
 serde = { version = "1.0.143", features = ["derive"] }
 serde_json = "1.0.85"
@@ -101,12 +103,14 @@ tokio.workspace = true
 futures.workspace = true
 url.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
 dotenv = "0.15.0"
 helios-verifiable-api-server = { path = "verifiable-api/server" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-alloy = { version = "0.14.0", features = ["full"] }
-tokio = { version = "1", features = ["full"] }
+alloy = { workspace = true, features = ["full"] }
+tokio = { workspace = true, features = ["full"] }
 eyre = "0.6.8"
 dirs = "5.0.1"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
@@ -118,6 +122,7 @@ tempfile = "3.4.0"
 hex = "0.4.3"
 pretty_assertions = "1.4.0"
 rand = "0.8.5"
+serial_test = "3.0"
 
 ######################################
 # Dependency Patches
@@ -182,3 +187,11 @@ harness = false
 [[bench]]
 name = "sync"
 harness = false
+
+######################################
+# Integration Tests
+######################################
+
+[[test]]
+name = "rpc_equivalence"
+path = "tests/rpc_equivalence.rs"

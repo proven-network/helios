@@ -40,14 +40,16 @@ typenum.workspace = true
 helios-common = { path = "../common" }
 helios-core = { path = "../core" }
 helios-consensus-core = { path = "consensus-core" }
+helios-revm-utils = { path = "../revm-utils"  }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4.37"
-getrandom = { version = "0.2.15", features = ["js"] }
+getrandom = { version = "0.3.1", features = ["wasm_js"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 openssl.workspace = true
 dirs = "5.0.1"
+rayon = "1.7"
 
 [target.wasm32-unknown-unknown.dependencies]
 parking_lot = { version = "0.12.2" }

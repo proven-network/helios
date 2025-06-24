@@ -10,13 +10,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct CliConfig {
     pub execution_rpc: Option<Url>,
-    pub execution_verifiable_api: Option<Url>,
+    pub verifiable_api: Option<Url>,
     pub consensus_rpc: Option<Url>,
     pub checkpoint: Option<B256>,
     pub rpc_bind_ip: Option<IpAddr>,
     pub rpc_port: Option<u16>,
     pub data_dir: Option<PathBuf>,
-    pub fallback: Option<String>,
+    pub fallback: Option<Url>,
     pub load_external_fallback: Option<bool>,
     pub strict_checkpoint_age: Option<bool>,
 }
@@ -29,8 +29,8 @@ impl CliConfig {
             user_dict.insert("execution_rpc", Value::from(rpc.to_string()));
         }
 
-        if let Some(api) = &self.execution_verifiable_api {
-            user_dict.insert("execution_verifiable_api", Value::from(api.to_string()));
+        if let Some(api) = &self.verifiable_api {
+            user_dict.insert("verifiable_api", Value::from(api.to_string()));
         }
 
         if let Some(rpc) = &self.consensus_rpc {
@@ -54,7 +54,7 @@ impl CliConfig {
         }
 
         if let Some(fallback) = &self.fallback {
-            user_dict.insert("fallback", Value::from(fallback.clone()));
+            user_dict.insert("fallback", Value::from(fallback.to_string()));
         }
 
         if let Some(l) = self.load_external_fallback {

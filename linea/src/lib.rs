@@ -1,8 +1,11 @@
+use helios_core::client::HeliosClient;
+use spec::Linea;
+
 pub mod builder;
 pub mod config;
 pub mod consensus;
+pub mod historical;
 pub mod spec;
-pub mod types;
 
 pub use builder::LineaClientBuilder;
-pub use types::LineaClient;
+pub type LineaClient = HeliosClient<Linea>;

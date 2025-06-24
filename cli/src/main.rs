@@ -21,42 +21,65 @@ use tracing_subscriber::FmtSubscriber;
 use url::Url;
 
 use helios_common::network_spec::NetworkSpec;
-use helios_core::client::Client;
-use helios_core::consensus::Consensus;
+use helios_core::client::HeliosClient;
 use helios_ethereum::config::{cli::CliConfig, Config as EthereumConfig};
-use helios_ethereum::database::FileDB;
 use helios_ethereum::{EthereumClient, EthereumClientBuilder};
-use helios_opstack::{config::Config as OpStackConfig, OpStackClient, OpStackClientBuilder};
-
 use helios_linea::{
     builder::LineaClientBuilder, config::CliConfig as LineaCliConfig,
-    config::Config as LineaConfig, types::LineaClient,
+    config::Config as LineaConfig, LineaClient,
 };
+use helios_opstack::{config::Config as OpStackConfig, OpStackClient, OpStackClientBuilder};
+
+mod tui;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    enable_tracer();
-
     let cli = Cli::parse();
+
+    if !cli.tui {
+        enable_tracer();
+    }
+
     match cli.command {
         Command::Ethereum(ethereum) => {
-            let mut client = ethereum.make_client();
-            start_client(&mut client).await;
-            register_shutdown_handler(client);
+            let client = ethereum.make_client();
+            if cli.tui {
+                if let Err(e) = tui::run(client).await {
+                    error!(target: "helios::tui", "TUI error: {}", e);
+                    exit(1);
+                }
+            } else {
+                register_shutdown_handler(client);
+                std::future::pending().await
+            }
         }
         Command::OpStack(opstack) => {
-            let mut client = opstack.make_client();
-            start_client(&mut client).await;
-            register_shutdown_handler(client);
+            let client = opstack.make_client();
+            if cli.tui {
+                if let Err(e) = tui::run(client).await {
+                    error!(target: "helios::tui", "TUI error: {}", e);
+                    exit(1);
+                }
+            } else {
+                register_shutdown_handler(client);
+                std::future::pending().await
+            }
         }
         Command::Linea(linea) => {
-            let mut client = linea.make_client();
-            start_client(&mut client).await;
-            register_shutdown_handler(client);
+            let client = linea.make_client();
+            if cli.tui {
+                if let Err(e) = tui::run(client).await {
+                    error!(target: "helios::tui", "TUI error: {}", e);
+                    exit(1);
+                }
+            } else {
+                register_shutdown_handler(client);
+                std::future::pending().await
+            }
         }
     }
 
-    std::future::pending().await
+    Ok(())
 }
 
 fn enable_tracer() {
@@ -72,15 +95,7 @@ fn enable_tracer() {
     tracing::subscriber::set_global_default(subscriber).expect("subscriber set failed");
 }
 
-async fn start_client<N: NetworkSpec, C: Consensus<N::BlockResponse>>(client: &mut Client<N, C>) {
-    if let Err(err) = client.start().await {
-        error!(target: "helios::runner", error = %err);
-        exit(1);
-    }
-}
-
-fn register_shutdown_handler<N: NetworkSpec, C: Consensus<N::BlockResponse>>(client: Client<N, C>) {
-    let client = Arc::new(client);
+fn register_shutdown_handler<N: NetworkSpec>(client: HeliosClient<N>) {
     let shutdown_counter = Arc::new(Mutex::new(0));
 
     ctrlc::set_handler(move || {
@@ -117,6 +132,9 @@ fn register_shutdown_handler<N: NetworkSpec, C: Consensus<N::BlockResponse>>(cli
 struct Cli {
     #[command(subcommand)]
     command: Command,
+
+    #[arg(long, global = true, help = "Enable terminal user interface")]
+    tui: bool,
 }
 
 #[derive(Subcommand)]
@@ -141,14 +159,14 @@ struct EthereumArgs {
     checkpoint: Option<B256>,
     #[arg(short, long, env, value_parser = parse_url)]
     execution_rpc: Option<Url>,
-    #[arg(long, env, value_parser = parse_url)]
-    execution_verifiable_api: Option<Url>,
+    #[arg(short, long, env, value_parser = parse_url)]
+    verifiable_api: Option<Url>,
     #[arg(short, long, env, value_parser = parse_url)]
     consensus_rpc: Option<Url>,
     #[arg(short, long, env)]
     data_dir: Option<String>,
-    #[arg(short = 'f', long, env)]
-    fallback: Option<String>,
+    #[arg(short = 'f', long, env, value_parser = parse_url)]
+    fallback: Option<Url>,
     #[arg(short = 'l', long, env)]
     load_external_fallback: bool,
     #[arg(short = 's', long, env)]
@@ -156,14 +174,15 @@ struct EthereumArgs {
 }
 
 impl EthereumArgs {
-    fn make_client(&self) -> EthereumClient<FileDB> {
+    fn make_client(&self) -> EthereumClient {
         let config_path = home_dir().unwrap().join(".helios/helios.toml");
         let cli_config = self.as_cli_config();
         let config = EthereumConfig::from_file(&config_path, &self.network, &cli_config);
 
         match EthereumClientBuilder::new()
+            .with_file_db()
             .config(config)
-            .build::<FileDB>()
+            .build()
         {
             Ok(client) => client,
             Err(err) => {
@@ -177,7 +196,7 @@ impl EthereumArgs {
         CliConfig {
             checkpoint: self.checkpoint,
             execution_rpc: self.execution_rpc.clone(),
-            execution_verifiable_api: self.execution_verifiable_api.clone(),
+            verifiable_api: self.verifiable_api.clone(),
             consensus_rpc: self.consensus_rpc.clone(),
             data_dir: self
                 .data_dir

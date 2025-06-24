@@ -2,7 +2,10 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use url::Url;
+
 use alloy::consensus::proofs::{calculate_transaction_root, calculate_withdrawals_root};
+use alloy::consensus::transaction::SignerRecoverable;
 use alloy::consensus::{Header as ConsensusHeader, Transaction as TxTrait};
 use alloy::eips::eip4895::{Withdrawal, Withdrawals};
 use alloy::primitives::{b256, fixed_bytes, Address, Bloom, BloomInput, B256, U256};
@@ -19,7 +22,7 @@ use tokio::sync::{
     mpsc::{channel, Receiver},
     watch,
 };
-use tracing::{error, info, warn};
+use tracing::{debug, error, warn};
 
 use helios_consensus_core::consensus_spec::MainnetConsensusSpec;
 use helios_core::consensus::Consensus;
@@ -48,7 +51,7 @@ impl ConsensusClient {
         let (finalized_block_send, finalized_block_recv) = watch::channel(None);
 
         let mut inner = Inner {
-            server_url: config.consensus_rpc.to_string(),
+            server_url: config.consensus_rpc.clone(),
             unsafe_signer: Arc::new(Mutex::new(config.chain.unsafe_signer)),
             chain_id: config.chain.chain_id,
             latest_block: None,
@@ -108,7 +111,7 @@ impl Consensus<Block<Transaction>> for ConsensusClient {
 
 #[allow(dead_code)]
 struct Inner {
-    server_url: String,
+    server_url: Url,
     unsafe_signer: Arc<Mutex<Address>>,
     chain_id: u64,
     latest_block: Option<u64>,
@@ -118,8 +121,11 @@ struct Inner {
 
 impl Inner {
     pub async fn advance(&mut self) -> Result<()> {
-        let req = format!("{}latest", self.server_url);
-        let commitment = reqwest::get(req)
+        let url = self
+            .server_url
+            .join("latest")
+            .map_err(|e| eyre!("Failed to construct latest URL: {}", e))?;
+        let commitment = reqwest::get(url)
             .await?
             .json::<SequencerCommitment>()
             .await?;
@@ -147,7 +153,7 @@ impl Inner {
                     self.latest_block = Some(block.header.number);
                     _ = self.block_send.send(block).await;
 
-                    tracing::info!(
+                    tracing::debug!(
                         "unsafe head updated: block={} age={}s",
                         number,
                         age.as_secs()
@@ -178,12 +184,15 @@ fn verify_unsafe_signer(config: Config, signer: Arc<Mutex<Address>>) {
                 eth_config.default_checkpoint = checkpoint;
             }
 
+            let consensus_rpc = eth_config
+                .consensus_rpc
+                .as_ref()
+                .ok_or_else(|| eyre!("missing consensus rpc"))?
+                .clone();
+
             let mut eth_consensus =
                 EthConsensusClient::<MainnetConsensusSpec, HttpRpc, ConfigDB>::new(
-                    &eth_config
-                        .consensus_rpc
-                        .clone()
-                        .ok_or_else(|| eyre!("missing consensus rpc"))?,
+                    &consensus_rpc,
                     Arc::new(eth_config.into()),
                 )?;
 
@@ -195,11 +204,11 @@ fn verify_unsafe_signer(config: Config, signer: Arc<Mutex<Address>>) {
                 .ok_or_eyre("failed to receive block")?;
 
             // Query proof from op consensus server
-            let req = format!(
-                "{}unsafe_signer_proof/{}",
-                config.consensus_rpc, block.header.hash
-            );
-            let proof = reqwest::get(req)
+            let url = config
+                .consensus_rpc
+                .join(&format!("unsafe_signer_proof/{}", block.header.hash))
+                .map_err(|e| eyre!("Failed to construct proof URL: {}", e))?;
+            let proof = reqwest::get(url)
                 .await?
                 .json::<EIP1186AccountProofResponse>()
                 .await?;
@@ -237,7 +246,7 @@ fn verify_unsafe_signer(config: Config, signer: Arc<Mutex<Address>>) {
             {
                 let mut curr_signer = signer.lock().map_err(|_| eyre!("failed to lock signer"))?;
                 if verified_signer != *curr_signer {
-                    info!(target: "helios::opstack", "unsafe signer updated: {}", verified_signer);
+                    debug!(target: "helios::opstack", "unsafe signer updated: {}", verified_signer);
                     *curr_signer = verified_signer;
                 }
             }

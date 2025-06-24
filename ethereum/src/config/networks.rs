@@ -9,6 +9,7 @@ use dirs::home_dir;
 use eyre::Result;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
+use url::Url;
 
 use helios_common::fork_schedule::ForkSchedule;
 use helios_consensus_core::types::{Fork, Forks};
@@ -23,6 +24,7 @@ pub enum Network {
     Mainnet,
     Sepolia,
     Holesky,
+    Hoodi,
 }
 
 impl FromStr for Network {
@@ -33,6 +35,7 @@ impl FromStr for Network {
             "mainnet" => Ok(Self::Mainnet),
             "sepolia" => Ok(Self::Sepolia),
             "holesky" => Ok(Self::Holesky),
+            "hoodi" => Ok(Self::Hoodi),
             _ => Err(eyre::eyre!("network not recognized")),
         }
     }
@@ -44,6 +47,7 @@ impl Display for Network {
             Self::Mainnet => "mainnet",
             Self::Sepolia => "sepolia",
             Self::Holesky => "holesky",
+            Self::Hoodi => "hoodi",
         };
 
         f.write_str(str)
@@ -56,6 +60,7 @@ impl Network {
             Self::Mainnet => mainnet(),
             Self::Sepolia => sepolia(),
             Self::Holesky => holesky(),
+            Self::Hoodi => hoodi(),
         }
     }
 
@@ -64,6 +69,7 @@ impl Network {
             1 => Ok(Network::Mainnet),
             11155111 => Ok(Network::Sepolia),
             17000 => Ok(Network::Holesky),
+            560048 => Ok(Network::Hoodi),
             _ => Err(eyre::eyre!("chain id not known")),
         }
     }
@@ -72,10 +78,10 @@ impl Network {
 pub fn mainnet() -> BaseConfig {
     BaseConfig {
         default_checkpoint: b256!(
-            "9eab72ee6567a02c8cf8b5f41ce871e31f67014412b67493f58bd72e52718cca"
+            "0xe4163704b79dbb52a91ba6be1ae6f5504b060522f5495c73b6c55865412b428c"
         ),
         rpc_port: 8545,
-        consensus_rpc: Some("https://ethereum.operationsolarstorm.org".to_string()),
+        consensus_rpc: Some(Url::parse("https://ethereum.operationsolarstorm.org").unwrap()),
         chain: ChainConfig {
             chain_id: 1,
             genesis_time: 1606824023,
@@ -107,9 +113,7 @@ pub fn mainnet() -> BaseConfig {
                 fork_version: fixed_bytes!("05000000"),
             },
         },
-        execution_forks: ForkSchedule {
-            prague_timestamp: 1746612311,
-        },
+        execution_forks: EthereumForkSchedule::mainnet(),
         max_checkpoint_age: 1_209_600, // 14 days
         #[cfg(not(target_arch = "wasm32"))]
         data_dir: Some(data_dir(Network::Mainnet)),
@@ -155,9 +159,7 @@ pub fn sepolia() -> BaseConfig {
                 fork_version: fixed_bytes!("90000074"),
             },
         },
-        execution_forks: ForkSchedule {
-            prague_timestamp: 1741159776,
-        },
+        execution_forks: EthereumForkSchedule::sepolia(),
         max_checkpoint_age: 1_209_600, // 14 days
         #[cfg(not(target_arch = "wasm32"))]
         data_dir: Some(data_dir(Network::Sepolia)),
@@ -203,12 +205,56 @@ pub fn holesky() -> BaseConfig {
                 fork_version: fixed_bytes!("06017000"),
             },
         },
-        execution_forks: ForkSchedule {
-            prague_timestamp: 1740434112,
-        },
+        execution_forks: EthereumForkSchedule::holesky(),
         max_checkpoint_age: 1_209_600, // 14 days
         #[cfg(not(target_arch = "wasm32"))]
         data_dir: Some(data_dir(Network::Holesky)),
+        ..std::default::Default::default()
+    }
+}
+
+pub fn hoodi() -> BaseConfig {
+    BaseConfig {
+        default_checkpoint: b256!(
+            "689dc3d39faf53c360ada45a734139bfb195f96d04416c797bb0c1a46da903ad"
+        ),
+        rpc_port: 8545,
+        consensus_rpc: None,
+        chain: ChainConfig {
+            chain_id: 560048,
+            genesis_time: 1742213400,
+            genesis_root: b256!("212f13fc4df078b6cb7db228f1c8307566dcecf900867401a92023d7ba99cb5f"),
+        },
+        forks: Forks {
+            genesis: Fork {
+                epoch: 0,
+                fork_version: fixed_bytes!("10000910"),
+            },
+            altair: Fork {
+                epoch: 0,
+                fork_version: fixed_bytes!("20000910"),
+            },
+            bellatrix: Fork {
+                epoch: 0,
+                fork_version: fixed_bytes!("30000910"),
+            },
+            capella: Fork {
+                epoch: 0,
+                fork_version: fixed_bytes!("40000910"),
+            },
+            deneb: Fork {
+                epoch: 0,
+                fork_version: fixed_bytes!("50000910"),
+            },
+            electra: Fork {
+                epoch: 2048,
+                fork_version: fixed_bytes!("60000910"),
+            },
+        },
+        execution_forks: EthereumForkSchedule::hoodi(),
+        max_checkpoint_age: 1_209_600, // 14 days
+        #[cfg(not(target_arch = "wasm32"))]
+        data_dir: Some(data_dir(Network::Hoodi)),
         ..std::default::Default::default()
     }
 }
@@ -218,4 +264,108 @@ fn data_dir(network: Network) -> PathBuf {
     home_dir()
         .unwrap()
         .join(format!(".helios/data/{}", network))
+}
+
+pub struct EthereumForkSchedule;
+
+impl EthereumForkSchedule {
+    fn mainnet() -> ForkSchedule {
+        ForkSchedule {
+            frontier_timestamp: 1438226773,
+            homestead_timestamp: 1457938193,
+            dao_timestamp: 1468977640,
+            tangerine_timestamp: 1476753571,
+            spurious_dragon_timestamp: 1479788144,
+            byzantium_timestamp: 1508131331,
+            constantinople_timestamp: 1551340324,
+            petersburg_timestamp: 1551340324,
+            istanbul_timestamp: 1575807909,
+            muir_glacier_timestamp: 1577953849,
+            berlin_timestamp: 1618481223,
+            london_timestamp: 1628166822,
+            arrow_glacier_timestamp: 1639036523,
+            gray_glacier_timestamp: 1656586444,
+            paris_timestamp: 1663224162,
+            shanghai_timestamp: 1681338455,
+            cancun_timestamp: 1710338135,
+            prague_timestamp: 1746612311,
+
+            ..Default::default()
+        }
+    }
+
+    fn sepolia() -> ForkSchedule {
+        ForkSchedule {
+            frontier_timestamp: 1633267481,
+            homestead_timestamp: 1633267481,
+            dao_timestamp: 1633267481,
+            tangerine_timestamp: 1633267481,
+            spurious_dragon_timestamp: 1633267481,
+            byzantium_timestamp: 1633267481,
+            constantinople_timestamp: 1633267481,
+            petersburg_timestamp: 1633267481,
+            istanbul_timestamp: 1633267481,
+            muir_glacier_timestamp: 1633267481,
+            berlin_timestamp: 1633267481,
+            london_timestamp: 1633267481,
+            arrow_glacier_timestamp: 1633267481,
+            gray_glacier_timestamp: 1633267481,
+            paris_timestamp: 1633267481,
+            shanghai_timestamp: 1677557088,
+            cancun_timestamp: 1706655072,
+            prague_timestamp: 1741159776,
+
+            ..Default::default()
+        }
+    }
+
+    fn holesky() -> ForkSchedule {
+        ForkSchedule {
+            frontier_timestamp: 1695902100,
+            homestead_timestamp: 1695902100,
+            dao_timestamp: 1695902100,
+            tangerine_timestamp: 1695902100,
+            spurious_dragon_timestamp: 1695902100,
+            byzantium_timestamp: 1695902100,
+            constantinople_timestamp: 1695902100,
+            petersburg_timestamp: 1695902100,
+            istanbul_timestamp: 1695902100,
+            muir_glacier_timestamp: 1695902100,
+            berlin_timestamp: 1695902100,
+            london_timestamp: 1695902100,
+            arrow_glacier_timestamp: 1695902100,
+            gray_glacier_timestamp: 1695902100,
+            paris_timestamp: 1695902100,
+            shanghai_timestamp: 1696000704,
+            cancun_timestamp: 1707305664,
+            prague_timestamp: 1740434112,
+
+            ..Default::default()
+        }
+    }
+
+    fn hoodi() -> ForkSchedule {
+        ForkSchedule {
+            frontier_timestamp: 0,
+            homestead_timestamp: 0,
+            dao_timestamp: 0,
+            tangerine_timestamp: 0,
+            spurious_dragon_timestamp: 0,
+            byzantium_timestamp: 0,
+            constantinople_timestamp: 0,
+            petersburg_timestamp: 0,
+            istanbul_timestamp: 0,
+            muir_glacier_timestamp: 0,
+            berlin_timestamp: 0,
+            london_timestamp: 0,
+            arrow_glacier_timestamp: 0,
+            gray_glacier_timestamp: 0,
+            paris_timestamp: 0,
+            shanghai_timestamp: 0,
+            cancun_timestamp: 0,
+            prague_timestamp: 1742999832,
+
+            ..Default::default()
+        }
+    }
 }

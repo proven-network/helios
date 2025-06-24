@@ -5,6 +5,7 @@ use alloy::{
 };
 use async_trait::async_trait;
 use eyre::Result;
+use url::Url;
 
 use helios_common::network_spec::NetworkSpec;
 use helios_verifiable_api_types::*;
@@ -16,8 +17,8 @@ pub use helios_verifiable_api_types as types;
 
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-pub trait VerifiableApi<N: NetworkSpec>: Send + Clone + Sync + 'static {
-    fn new(base_url: &str) -> Self
+pub trait VerifiableApi<N: NetworkSpec>: Send + Clone + Sync + Sized + 'static {
+    fn new(base_url: &Url) -> Self
     where
         Self: Sized;
     // Methods augmented with proof
@@ -32,10 +33,14 @@ pub trait VerifiableApi<N: NetworkSpec>: Send + Clone + Sync + 'static {
         &self,
         tx_hash: B256,
     ) -> Result<Option<TransactionReceiptResponse<N>>>;
+    async fn get_transaction(&self, tx_hash: B256) -> Result<Option<TransactionResponse<N>>>;
+    async fn get_transaction_by_location(
+        &self,
+        block_id: BlockId,
+        index: u64,
+    ) -> Result<Option<TransactionResponse<N>>>;
     async fn get_logs(&self, filter: &Filter) -> Result<LogsResponse<N>>;
-    async fn get_filter_logs(&self, filter_id: U256) -> Result<FilterLogsResponse<N>>;
-    async fn get_filter_changes(&self, filter_id: U256) -> Result<FilterChangesResponse<N>>;
-    async fn create_extended_access_list(
+    async fn get_execution_hint(
         &self,
         tx: N::TransactionRequest,
         validate_tx: bool,
@@ -50,8 +55,4 @@ pub trait VerifiableApi<N: NetworkSpec>: Send + Clone + Sync + 'static {
         block_id: BlockId,
     ) -> Result<Option<Vec<N::ReceiptResponse>>>;
     async fn send_raw_transaction(&self, bytes: &[u8]) -> Result<SendRawTxResponse>;
-    async fn new_filter(&self, filter: &Filter) -> Result<NewFilterResponse>;
-    async fn new_block_filter(&self) -> Result<NewFilterResponse>;
-    async fn new_pending_transaction_filter(&self) -> Result<NewFilterResponse>;
-    async fn uninstall_filter(&self, filter_id: U256) -> Result<UninstallFilterResponse>;
 }
