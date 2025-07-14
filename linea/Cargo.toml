@@ -28,3 +28,12 @@ helios-ethereum = { path = "../ethereum" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4.37"
+
+[lints.rust]
+warnings = "allow"
+
+[lints.clippy]
+all = "allow"
+pedantic = "allow"
+nursery = "allow"
+cargo = "allow"

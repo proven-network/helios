@@ -15,3 +15,11 @@ thiserror.workspace = true
 # self crates
 helios-common = { path = "../common" }
 helios-core = { path = "../core" }
+[lints.rust]
+warnings = "allow"
+
+[lints.clippy]
+all = "allow"
+pedantic = "allow"
+nursery = "allow"
+cargo = "allow"

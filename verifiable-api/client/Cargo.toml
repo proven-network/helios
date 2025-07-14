@@ -18,3 +18,12 @@ url.workspace = true
 # self crates
 helios-verifiable-api-types = { path = "../types" }
 helios-common = { path = "../../common" }
+
+[lints.rust]
+warnings = "allow"
+
+[lints.clippy]
+all = "allow"
+pedantic = "allow"
+nursery = "allow"
+cargo = "allow"

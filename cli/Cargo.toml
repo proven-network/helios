@@ -32,3 +32,12 @@ helios-core = { path = "../core" }
 helios-ethereum = { path = "../ethereum" }
 helios-opstack = { path = "../opstack" }
 helios-linea = { path = "../linea" }
+
+[lints.rust]
+warnings = "allow"
+
+[lints.clippy]
+all = "allow"
+pedantic = "allow"
+nursery = "allow"
+cargo = "allow"

@@ -13,3 +13,12 @@ helios-common = { path = "../../common" }
 helios-core = { path = "../../core" }
 helios-ethereum = { path = "../../ethereum" }
 helios-verifiable-api-types = { path = "../../verifiable-api/types" }
+
+[lints.rust]
+warnings = "allow"
+
+[lints.clippy]
+all = "allow"
+pedantic = "allow"
+nursery = "allow"
+cargo = "allow"

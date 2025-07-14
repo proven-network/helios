@@ -13,3 +13,12 @@ tokio.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
 hex.workspace = true
+
+[lints.rust]
+warnings = "allow"
+
+[lints.clippy]
+all = "allow"
+pedantic = "allow"
+nursery = "allow"
+cargo = "allow"

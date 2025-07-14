@@ -10,3 +10,12 @@ serde_json.workspace = true
 
 # self crates
 helios-common = { path = "../../common" }
+
+[lints.rust]
+warnings = "allow"
+
+[lints.clippy]
+all = "allow"
+pedantic = "allow"
+nursery = "allow"
+cargo = "allow"

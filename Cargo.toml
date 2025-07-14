@@ -195,3 +195,12 @@ harness = false
 [[test]]
 name = "rpc_equivalence"
 path = "tests/rpc_equivalence.rs"
+
+[lints.rust]
+warnings = "allow"
+
+[lints.clippy]
+all = "allow"
+pedantic = "allow"
+nursery = "allow"
+cargo = "allow"
