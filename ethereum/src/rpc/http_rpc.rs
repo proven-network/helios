@@ -1,4 +1,6 @@
 use std::cmp;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Duration;
 
 use alloy::primitives::B256;
 use async_trait::async_trait;
@@ -17,6 +19,7 @@ use crate::constants::MAX_REQUEST_LIGHT_CLIENT_UPDATES;
 
 #[derive(Debug)]
 pub struct HttpRpc {
+    client: reqwest::Client,
     rpc: String,
 }
 
@@ -33,31 +36,33 @@ struct HttpRpcError {
     message: String,
 }
 
-async fn get<R: DeserializeOwned>(req: &str) -> Result<R> {
-    let response = retry(
-        || async { Ok::<_, eyre::Report>(reqwest::get(req).await?) },
-        BackoffSettings::default(),
-    )
-    .await?;
+impl HttpRpc {
+    async fn get<R: DeserializeOwned>(&self, req: &str) -> Result<R> {
+        let response = retry(
+            || async { Ok::<_, eyre::Report>(self.client.get(req).send().await?) },
+            BackoffSettings::default(),
+        )
+        .await?;
 
-    let status = response.status();
+        let status = response.status();
+        let bytes = response.bytes().await?;
 
-    let bytes = response.bytes().await?;
-    let message: HttpRpcMessage<R> = serde_json::from_slice(&bytes).map_err(|e| {
-        if status.is_success() {
-            eyre::eyre!("deserialization error: {}", e)
-        } else {
-            eyre::eyre!("status: {}, raw response: {:?}", status.as_u16(), bytes)
+        let message: HttpRpcMessage<R> = serde_json::from_slice(&bytes).map_err(|e| {
+            if status.is_success() {
+                eyre::eyre!("deserialization error: {}", e)
+            } else {
+                eyre::eyre!("status: {}, raw response: {:?}", status.as_u16(), bytes)
+            }
+        })?;
+
+        match message {
+            HttpRpcMessage::Success(data) => Ok(data),
+            HttpRpcMessage::Error(error) => Err(eyre::eyre!(
+                "status: {}, message: {}",
+                error.code,
+                error.message
+            )),
         }
-    })?;
-
-    match message {
-        HttpRpcMessage::Success(data) => Ok(data),
-        HttpRpcMessage::Error(error) => Err(eyre::eyre!(
-            "status: {}, message: {}",
-            error.code,
-            error.message
-        )),
     }
 }
 
@@ -65,7 +70,19 @@ async fn get<R: DeserializeOwned>(req: &str) -> Result<R> {
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl<S: ConsensusSpec> ConsensusRpc<S> for HttpRpc {
     fn new(rpc: &str) -> Self {
+        #[cfg(not(target_arch = "wasm32"))]
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30)) // Add request timeout
+            .connect_timeout(Duration::from_secs(10)) // Add connection timeout
+            .pool_idle_timeout(Duration::from_secs(60)) // Clean up idle connections
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+
+        #[cfg(target_arch = "wasm32")]
+        let client = reqwest::Client::new();
+
         HttpRpc {
+            client,
             rpc: rpc.trim_end_matches('/').to_string(),
         }
     }
@@ -77,8 +94,10 @@ impl<S: ConsensusSpec> ConsensusRpc<S> for HttpRpc {
             self.rpc, root_hex
         );
 
-        let res: BootstrapResponse<S> =
-            get(&req).await.map_err(|e| RpcError::new("bootstrap", e))?;
+        let res: BootstrapResponse<S> = self
+            .get(&req)
+            .await
+            .map_err(|e| RpcError::new("bootstrap", e))?;
 
         Ok(res.data)
     }
@@ -90,14 +109,18 @@ impl<S: ConsensusSpec> ConsensusRpc<S> for HttpRpc {
             self.rpc, period, count
         );
 
-        let res: Vec<UpdateData<S>> = get(&req).await.map_err(|e| RpcError::new("updates", e))?;
+        let res: Vec<UpdateData<S>> = self
+            .get(&req)
+            .await
+            .map_err(|e| RpcError::new("updates", e))?;
 
         Ok(res.into_iter().map(|d| d.data).collect())
     }
 
     async fn get_finality_update(&self) -> Result<FinalityUpdate<S>> {
         let req = format!("{}/eth/v1/beacon/light_client/finality_update", self.rpc);
-        let res: FinalityUpdateResponse<S> = get(&req)
+        let res: FinalityUpdateResponse<S> = self
+            .get(&req)
             .await
             .map_err(|e| RpcError::new("finality_update", e))?;
 
@@ -106,7 +129,8 @@ impl<S: ConsensusSpec> ConsensusRpc<S> for HttpRpc {
 
     async fn get_optimistic_update(&self) -> Result<OptimisticUpdate<S>> {
         let req = format!("{}/eth/v1/beacon/light_client/optimistic_update", self.rpc);
-        let res: OptimisticUpdateResponse<S> = get(&req)
+        let res: OptimisticUpdateResponse<S> = self
+            .get(&req)
             .await
             .map_err(|e| RpcError::new("optimistic_update", e))?;
 
@@ -115,15 +139,17 @@ impl<S: ConsensusSpec> ConsensusRpc<S> for HttpRpc {
 
     async fn get_block(&self, slot: u64) -> Result<BeaconBlock<S>> {
         let req = format!("{}/eth/v2/beacon/blocks/{}", self.rpc, slot);
-        let res: BeaconBlockResponse<S> =
-            get(&req).await.map_err(|e| RpcError::new("blocks", e))?;
+        let res: BeaconBlockResponse<S> = self
+            .get(&req)
+            .await
+            .map_err(|e| RpcError::new("blocks", e))?;
 
         Ok(res.data.message)
     }
 
     async fn chain_id(&self) -> Result<u64> {
         let req = format!("{}/eth/v1/config/spec", self.rpc);
-        let res: SpecResponse = get(&req).await.map_err(|e| RpcError::new("spec", e))?;
+        let res: SpecResponse = self.get(&req).await.map_err(|e| RpcError::new("spec", e))?;
 
         Ok(res.data.chain_id)
     }

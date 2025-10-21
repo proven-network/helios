@@ -4,15 +4,7 @@ version.workspace = true
 edition = "2021"
 
 [dependencies]
-# Don't inherit workspace version to not inherit all of the features defined in the workspace
-alloy = { version = "1.0.3", default-features = false, features = [
-    "consensus",
-    "rpc-types",
-    "ssz",
-    "rlp",
-    "k256",
-    "eips",
-] }
+alloy.workspace = true
 alloy-rlp = "0.3.12"
 bls12_381.workspace = true
 ssz_types.workspace = true
@@ -34,9 +26,11 @@ getrandom = { version = "0.2.15", features = ["js"] }
 wasmtimer = "0.4.1"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["full"] }
+tokio.workspace = true
 snap = "1"
-serde_yaml = "0.9.34"
+serde_yaml.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
 
 [lints.rust]
 warnings = "allow"

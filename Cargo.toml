@@ -6,7 +6,7 @@ autobenches = false
 exclude = ["benches"]
 
 [workspace.package]
-version = "0.9.0"
+version = "0.9.4"
 
 [workspace]
 members = [
@@ -40,7 +40,7 @@ sha2 = "0.9"
 bls12_381 = { version = "0.8.0", features = ["experimental"] }
 
 # execution
-alloy = { version = "1.0.3", features = [
+alloy = { version = "1.0.37", features = [
     "rpc-types",
     "consensus",
     "rlp",
@@ -52,9 +52,9 @@ alloy = { version = "1.0.3", features = [
     "json-rpc",
     "signers",
 ] }
-alloy-trie = { version = "0.9", features = ["ethereum"] }
-op-alloy-rpc-types = "0.18.0"
-revm = { version = "22.0.1", default-features = false, features = [
+alloy-trie = { version = "0.9.1", features = ["ethereum"] }
+op-alloy-rpc-types = "0.20.0"
+revm = { version = "29.0.1", default-features = false, features = [
     "std",
     "serde",
     "optional_block_gas_limit",

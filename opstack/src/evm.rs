@@ -14,13 +14,13 @@ use revm::{
     context::{result::ExecutionResult, BlockEnv, CfgEnv, ContextTr, TxEnv},
     context_interface::block::BlobExcessGasAndPrice,
     database::EmptyDB,
-    primitives::{Address, Bytes},
+    primitives::{Address, Bytes, U256},
     Context, ExecuteEvm,
 };
 use tracing::debug;
 
 use helios_common::{
-    execution_provider::ExecutionProivder,
+    execution_provider::ExecutionProvider,
     fork_schedule::ForkSchedule,
     types::{Account, EvmError},
 };
@@ -29,7 +29,7 @@ use helios_revm_utils::proof_db::ProofDB;
 
 use crate::spec::OpStack;
 
-pub struct OpStackEvm<E: ExecutionProivder<OpStack>> {
+pub struct OpStackEvm<E: ExecutionProvider<OpStack>> {
     execution: Arc<E>,
     chain_id: u64,
     block_id: BlockId,
@@ -37,7 +37,7 @@ pub struct OpStackEvm<E: ExecutionProivder<OpStack>> {
     phantom: PhantomData<OpStack>,
 }
 
-impl<E: ExecutionProivder<OpStack>> OpStackEvm<E> {
+impl<E: ExecutionProvider<OpStack>> OpStackEvm<E> {
     pub fn new(
         execution: Arc<E>,
         chain_id: u64,
@@ -61,26 +61,44 @@ impl<E: ExecutionProivder<OpStack>> OpStackEvm<E> {
         let mut db = ProofDB::new(self.block_id, self.execution.clone());
         _ = db.state.prefetch_state(tx, validate_tx).await;
 
-        let mut evm = self
-            .get_context(tx, self.block_id, validate_tx)
-            .await
-            .with_db(db)
-            .build_op();
+        // Iterative execution with state fetching
+        let mut iteration = 0;
+        const MAX_ITERATIONS: u32 = 50; // Prevent infinite loops
 
         let tx_res = loop {
-            let db = evm.0.db();
-            if db.state.needs_update() {
-                debug!("evm cache miss: {:?}", db.state.access.as_ref().unwrap());
-                db.state.update_state().await.unwrap();
+            iteration += 1;
+            if iteration > MAX_ITERATIONS {
+                return Err(EvmError::Generic(
+                    "Maximum iterations reached while fetching state".to_string(),
+                ));
             }
 
-            let res = evm.replay();
+            // Update state first if needed
+            if db.state.needs_update() {
+                debug!(
+                    "evm cache miss (iteration {}): {:?}",
+                    iteration,
+                    db.state.access.as_ref().unwrap()
+                );
+                db.state
+                    .update_state()
+                    .await
+                    .map_err(|e| EvmError::Generic(e.to_string()))?;
+            }
 
-            let db = evm.0.db();
-            let needs_update = db.state.needs_update();
+            // Create EVM after any async operations
+            let context = self.get_context(tx, self.block_id, validate_tx).await?;
 
-            if res.is_ok() || !needs_update {
-                break res.map(|res| (res.result, mem::take(&mut db.state.accounts)));
+            // Execute in a scope to ensure EVM is dropped before any potential async operations
+            let (result, needs_update) = {
+                let mut evm = context.with_db(&mut db).build_op();
+                let res = evm.replay();
+                let needs_update = evm.0.db_mut().state.needs_update();
+                (res, needs_update)
+            };
+
+            if result.is_ok() || !needs_update {
+                break result.map(|res| (res.result, mem::take(&mut db.state.accounts)));
             }
         };
 
@@ -92,14 +110,14 @@ impl<E: ExecutionProivder<OpStack>> OpStackEvm<E> {
         tx: &OpTransactionRequest,
         block_id: BlockId,
         validate_tx: bool,
-    ) -> OpContext<EmptyDB> {
+    ) -> Result<OpContext<EmptyDB>, EvmError> {
         let block = self
             .execution
             .get_block(block_id, false)
             .await
-            .unwrap()
+            .map_err(|err| EvmError::Generic(err.to_string()))?
             .ok_or(ExecutionError::BlockNotFound(block_id))
-            .unwrap();
+            .map_err(|err| EvmError::Generic(err.to_string()))?;
 
         let mut tx_env = Self::tx_env(tx);
 
@@ -123,10 +141,10 @@ impl<E: ExecutionProivder<OpStack>> OpStackEvm<E> {
         let mut op_tx_env = OpTransaction::new(tx_env);
         op_tx_env.enveloped_tx = Some(Bytes::new());
 
-        Context::op()
+        Ok(Context::op()
             .with_tx(op_tx_env)
             .with_block(Self::block_env(&block, &self.fork_schedule))
-            .with_cfg(cfg)
+            .with_cfg(cfg))
     }
 
     fn tx_env(tx: &OpTransactionRequest) -> TxEnv {
@@ -165,16 +183,18 @@ impl<E: ExecutionProivder<OpStack>> OpStackEvm<E> {
         }
     }
 
-    fn block_env(block: &Block<Transaction, Header>, _fork_schedule: &ForkSchedule) -> BlockEnv {
-        let blob_excess_gas_and_price = Some(BlobExcessGasAndPrice {
-            excess_blob_gas: 0,
-            blob_gasprice: 0,
-        });
+    fn block_env(block: &Block<Transaction, Header>, fork_schedule: &ForkSchedule) -> BlockEnv {
+        // Get blob base fee update fraction based on fork
+        let blob_base_fee_update_fraction =
+            fork_schedule.get_blob_base_fee_update_fraction(block.header.timestamp());
+
+        let blob_excess_gas_and_price =
+            Some(BlobExcessGasAndPrice::new(0, blob_base_fee_update_fraction));
 
         BlockEnv {
-            number: block.header.number(),
+            number: U256::from(block.header.number()),
             beneficiary: block.header.beneficiary(),
-            timestamp: block.header.timestamp(),
+            timestamp: U256::from(block.header.timestamp()),
             gas_limit: block.header.gas_limit(),
             basefee: block.header.base_fee_per_gas().unwrap_or(0_u64),
             difficulty: block.header.difficulty(),

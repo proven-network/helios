@@ -6,14 +6,14 @@ use alloy::{
 };
 use eyre::Result;
 use revm::{
-    primitives::{address, Address, B256, U256},
+    primitives::{address, Address, B256, KECCAK_EMPTY, U256},
     state::{AccountInfo, Bytecode},
     Database,
 };
 use tracing::trace;
 
 use helios_common::{
-    execution_provider::ExecutionProivder,
+    execution_provider::ExecutionProvider,
     network_spec::NetworkSpec,
     types::{Account, EvmError},
 };
@@ -21,11 +21,11 @@ use helios_core::execution::errors::ExecutionError;
 
 use crate::types::DatabaseError;
 
-pub struct ProofDB<N: NetworkSpec, E: ExecutionProivder<N>> {
+pub struct ProofDB<N: NetworkSpec, E: ExecutionProvider<N>> {
     pub state: EvmState<N, E>,
 }
 
-impl<N: NetworkSpec, E: ExecutionProivder<N>> ProofDB<N, E> {
+impl<N: NetworkSpec, E: ExecutionProvider<N>> ProofDB<N, E> {
     pub fn new(block_id: BlockId, execution: Arc<E>) -> Self {
         let state = EvmState::new(execution, block_id);
         ProofDB { state }
@@ -39,7 +39,7 @@ pub enum StateAccess {
     Storage(Address, U256),
 }
 
-pub struct EvmState<N: NetworkSpec, E: ExecutionProivder<N>> {
+pub struct EvmState<N: NetworkSpec, E: ExecutionProvider<N>> {
     pub accounts: HashMap<Address, Account>,
     pub block_hash: HashMap<u64, B256>,
     pub block: BlockId,
@@ -48,7 +48,7 @@ pub struct EvmState<N: NetworkSpec, E: ExecutionProivder<N>> {
     pub phantom: PhantomData<N>,
 }
 
-impl<N: NetworkSpec, E: ExecutionProivder<N>> EvmState<N, E> {
+impl<N: NetworkSpec, E: ExecutionProvider<N>> EvmState<N, E> {
     pub fn new(execution: Arc<E>, block: BlockId) -> Self {
         Self {
             execution,
@@ -112,10 +112,19 @@ impl<N: NetworkSpec, E: ExecutionProivder<N>> EvmState<N, E> {
 
     pub fn get_basic(&mut self, address: Address) -> Result<AccountInfo, DatabaseError> {
         if let Some(account) = self.accounts.get(&address) {
+            // Normalize code_hash for REVM compatibility:
+            // RPC response for getProof method for non-existing (unused) EOAs
+            // may contain B256::ZERO for code_hash, but REVM expects KECCAK_EMPTY
+            let code_hash = if account.account.code_hash == B256::ZERO {
+                KECCAK_EMPTY
+            } else {
+                account.account.code_hash
+            };
+
             Ok(AccountInfo::new(
                 account.account.balance,
                 account.account.nonce,
-                account.account.code_hash,
+                code_hash,
                 Bytecode::new_raw(account.code.as_ref().unwrap().clone()),
             ))
         } else {
@@ -162,7 +171,7 @@ impl<N: NetworkSpec, E: ExecutionProivder<N>> EvmState<N, E> {
     }
 }
 
-impl<N: NetworkSpec, E: ExecutionProivder<N>> Database for ProofDB<N, E> {
+impl<N: NetworkSpec, E: ExecutionProvider<N>> Database for ProofDB<N, E> {
     type Error = DatabaseError;
 
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, DatabaseError> {

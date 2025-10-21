@@ -18,7 +18,7 @@ use tokio::{select, sync::broadcast::Sender};
 use tracing::{info, warn};
 
 use helios_common::{
-    execution_provider::ExecutionProivder,
+    execution_provider::ExecutionProvider,
     fork_schedule::ForkSchedule,
     network_spec::NetworkSpec,
     types::{EvmError, SubEventRx, SubscriptionEvent, SubscriptionType},
@@ -31,7 +31,7 @@ use crate::time::{interval, SystemTime, UNIX_EPOCH};
 
 use super::api::HeliosApi;
 
-pub struct Node<N: NetworkSpec, C: Consensus<N::BlockResponse>, E: ExecutionProivder<N>> {
+pub struct Node<N: NetworkSpec, C: Consensus<N::BlockResponse>, E: ExecutionProvider<N>> {
     pub consensus: C,
     pub execution: Arc<E>,
     filter_state: FilterState,
@@ -40,7 +40,7 @@ pub struct Node<N: NetworkSpec, C: Consensus<N::BlockResponse>, E: ExecutionProi
     phantom: PhantomData<N>,
 }
 
-impl<N: NetworkSpec, C: Consensus<N::BlockResponse>, E: ExecutionProivder<N>> Node<N, C, E> {
+impl<N: NetworkSpec, C: Consensus<N::BlockResponse>, E: ExecutionProvider<N>> Node<N, C, E> {
     pub fn new(mut consensus: C, execution: E, fork_schedule: ForkSchedule) -> Self {
         let mut block_recv = consensus.block_recv().unwrap();
         let mut finalized_block_recv = consensus.finalized_block_recv().unwrap();
@@ -159,7 +159,7 @@ impl<N: NetworkSpec, C: Consensus<N::BlockResponse>, E: ExecutionProivder<N>> No
 
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-impl<N: NetworkSpec, C: Consensus<N::BlockResponse>, E: ExecutionProivder<N>> HeliosApi<N>
+impl<N: NetworkSpec, C: Consensus<N::BlockResponse>, E: ExecutionProvider<N>> HeliosApi<N>
     for Node<N, C, E>
 {
     async fn shutdown(&self) {
@@ -420,8 +420,13 @@ impl<N: NetworkSpec, C: Consensus<N::BlockResponse>, E: ExecutionProivder<N>> He
             .ok_or(eyre!(ClientError::BlockNotFound(block_id)))?;
 
         if let Some(excess_blob_gas) = block.header().excess_blob_gas() {
-            let is_prague = block.header().timestamp() >= self.fork_schedule.prague_timestamp;
-            let price = BlobExcessGasAndPrice::new(excess_blob_gas, is_prague).blob_gasprice;
+            // Get blob base fee update fraction based on fork
+            let blob_base_fee_update_fraction = self
+                .fork_schedule
+                .get_blob_base_fee_update_fraction(block.header().timestamp());
+
+            let price = BlobExcessGasAndPrice::new(excess_blob_gas, blob_base_fee_update_fraction)
+                .blob_gasprice;
             Ok(U256::from(price))
         } else {
             Ok(U256::ZERO)
