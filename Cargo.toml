@@ -6,7 +6,7 @@ autobenches = false
 exclude = ["benches"]
 
 [workspace.package]
-version = "0.9.4"
+version = "0.10.1"
 
 [workspace]
 members = [
@@ -85,7 +85,7 @@ thiserror = "1.0.37"
 superstruct = "0.7.0"
 openssl = { version = "0.10", features = ["vendored"] }
 zduny-wasm-timer = "0.2.8"
-retri = "0.1.0"
+retri = "0.1.1"
 typenum = "1.17.0"
 
 ######################################
@@ -109,8 +109,8 @@ dotenv = "0.15.0"
 helios-verifiable-api-server = { path = "verifiable-api/server" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-alloy = { workspace = true, features = ["full"] }
-tokio = { workspace = true, features = ["full"] }
+alloy = { version = "1.0.37", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 eyre = "0.6.8"
 dirs = "5.0.1"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }

@@ -11,11 +11,11 @@ use op_alloy_consensus::OpTxType;
 use op_alloy_rpc_types::{OpTransactionRequest, Transaction};
 use op_revm::{DefaultOp, OpBuilder, OpContext, OpHaltReason, OpSpecId, OpTransaction};
 use revm::{
-    context::{result::ExecutionResult, BlockEnv, CfgEnv, ContextTr, TxEnv},
+    Context, ExecuteEvm,
+    context::{BlockEnv, CfgEnv, ContextTr, TxEnv, result::ExecutionResult},
     context_interface::block::BlobExcessGasAndPrice,
     database::EmptyDB,
     primitives::{Address, Bytes, U256},
-    Context, ExecuteEvm,
 };
 use tracing::debug;
 
@@ -61,17 +61,11 @@ impl<E: ExecutionProvider<OpStack>> OpStackEvm<E> {
         let mut db = ProofDB::new(self.block_id, self.execution.clone());
         _ = db.state.prefetch_state(tx, validate_tx).await;
 
-        // Iterative execution with state fetching
-        let mut iteration = 0;
-        const MAX_ITERATIONS: u32 = 50; // Prevent infinite loops
+        // Track iterations for debugging
+        let mut iteration: u32 = 0;
 
         let tx_res = loop {
             iteration += 1;
-            if iteration > MAX_ITERATIONS {
-                return Err(EvmError::Generic(
-                    "Maximum iterations reached while fetching state".to_string(),
-                ));
-            }
 
             // Update state first if needed
             if db.state.needs_update() {
